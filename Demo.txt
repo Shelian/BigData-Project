@@ -1,0 +1,533 @@
+#ifndef __BIGDATA_H__
+#define __BIGDATA_H__
+
+#include <iostream>
+using namespace std;
+#include <assert.h>
+#include <string>
+
+typedef long long INT64;
+#define MIN_INT64 0x8000000000000000 
+#define MAX_INT64 9223372036854775807
+
+class BigData
+{
+public:
+	BigData(INT64 value);
+	BigData(const char* pData);
+
+	BigData operator+(const BigData& bigdata);
+	BigData operator-(const BigData& bigdata);
+	BigData operator*(const BigData& bigdata);
+	BigData operator/(const BigData& bigdata);
+
+
+
+private:
+	bool IsINT64OverFlow()const;
+	string Add(string left, string right);
+	string Sub(string left, string right);
+	string Mul(string left, string right);
+	string Div(string left, string right);
+
+
+	bool IsLeftStrBig(const char* pLeft, int LSize, const char* pRight, int RSize);
+	char Subloop(char* pLeft, int LSize, const char* pRight, int RSize);
+
+	void INT64ToString();
+	friend ostream& operator<<(ostream& _cout, const BigData& bigdata);
+
+
+
+private:
+	INT64 _value;
+	string _strData;
+};
+
+
+
+
+#endif //__BIGDATA_H__
+
+//#define _CRT_SECURE_NO_WARNINGS 1
+#include "BigData.h"
+
+BigData::BigData(INT64 value)
+	:_value(value)
+{
+	INT64ToString();
+}
+
+BigData::BigData(const char* pData)
+{
+	if (NULL == pData)			//防止写成赋值符号
+	{
+		assert(false);
+		return;
+	}
+	//字符转换
+	//"12345" "1234qwe" "12345"
+	//"12345" "12345"
+	char* pStr = (char*)pData;
+	char cSymbol = pData[0];
+	if ('+' == cSymbol || '-' == cSymbol)
+	{
+		pStr++;
+	}
+	else if (*pData >= '0' && *pData <= '9')
+	{
+		cSymbol = '+';
+	}
+	else
+	{
+		return;
+	}
+
+	while ('0' == *pStr)
+		pStr++;
+
+	_strData.resize(strlen(pStr) + 1);
+	_strData[0] = cSymbol;
+	_value = 0;
+	int iCount = 1;
+	while (*pStr >= '0' && *pStr <= '9')
+	{
+		_value = _value * 10 + (*pStr-'0');
+		_strData[iCount] = *pStr;
+		pStr++;
+		iCount++;
+	}
+
+	_strData.resize(iCount);
+	if (cSymbol == '-')
+	{
+		_value = 0 - _value;
+	}
+}
+
+BigData BigData::operator+(const BigData& bigdata)
+{
+	if (IsINT64OverFlow() && bigdata.IsINT64OverFlow())
+	{
+		if (_strData[0] != bigdata._strData[0])
+		{
+			return BigData(_value + bigdata._value);
+		}
+		else
+		{
+			if ((_value > 0 && MAX_INT64 - _value >= bigdata._value) || //10 - 3  7 6 8
+				(_value < 0 && MIN_INT64 - _value <= bigdata._value)) //-10 - -3  -7  -8 -6
+			{
+				return BigData(_value + bigdata._value);
+			}
+		}
+	}
+	//至少一个溢出
+	//结果溢出
+	if (_strData[0] == bigdata._strData[0])
+	{
+		return BigData(Add(_strData, bigdata._strData).c_str());
+	}
+	return BigData(Sub(_strData, bigdata._strData).c_str());
+}
+
+BigData BigData::operator-(const BigData& bigdata)
+{
+	//如果都没有溢出，结果也不溢出
+	if (IsINT64OverFlow() && bigdata.IsINT64OverFlow())
+	{
+		if (_strData[0] == bigdata._strData[0])	//555555555 - 3333333333
+		{
+			return BigData(_value - bigdata._value);
+		}
+		else  //5555555555 - 4444444444444  //10 - 5  5 4 6
+		{
+			if ((_value > 0 && MAX_INT64 + bigdata._value >= _value) ||
+				(_value < 0 && MIN_INT64 + bigdata._value <= _value))//-5 -6 == -11  -10 + 6  -4 -5  -3
+			{
+				return BigData(_value - bigdata._value);
+			}
+		}
+	}
+
+	//有一个溢出
+	//结果溢出
+	if (_strData[0] != bigdata._strData[0])
+	{
+		return BigData(Add(_strData, bigdata._strData).c_str());//5555 -3333   //-5555  3333  //3333 -5555
+	}
+	return BigData(Sub(_strData, bigdata._strData).c_str());
+}
+
+BigData BigData::operator*(const BigData& bigdata)
+{
+	if (_value == 0 || bigdata._value == 0)
+	{
+		return BigData(INT64(0));
+	}
+
+	if (IsINT64OverFlow() && bigdata.IsINT64OverFlow())
+	{
+		if (_strData[0] == bigdata._strData[0])
+		{
+			if ((_value > 0 && MAX_INT64 / _value >= bigdata._value) ||
+				(_value < 0 && MAX_INT64 / _value <= bigdata._value))//10  2 5 4 6  10 -5 -2 -1 -4
+			{
+				return BigData(_value * bigdata._value);
+			}
+		}
+		else
+		{
+			if ((_value > 0 && MIN_INT64 / _value <= bigdata._value) ||
+				(_value < 0 && MIN_INT64 / _value >= bigdata._value))//-10 2 -5 -4 -6
+			{
+				return BigData(_value * bigdata._value);
+			}
+		}
+	}
+	return BigData(Mul(_strData, bigdata._strData).c_str());
+}
+
+BigData BigData::operator/(const BigData& bigdata)
+{
+	//1.除数等于0
+	if ('0' == bigdata._strData[1])
+	{
+		assert(false);
+	}
+	//2.两个都不溢出
+	if (IsINT64OverFlow() && bigdata.IsINT64OverFlow())
+	{
+		return BigData(_value / bigdata._value);
+	}
+	//3.左边小于右边
+	if (_strData.size() < bigdata._strData.size() ||
+		(_strData.size() == bigdata._strData.size() && strcmp(_strData.c_str()+1,bigdata._strData.c_str()+1)) < 0)
+	{
+		return BigData(INT64(0));
+	}
+	//4.除数等于+-1
+	if (bigdata._strData == "+1" || bigdata._strData == "-1")
+	{
+		string ret = _strData;
+		if (_strData[0] == bigdata._strData[0])
+		{
+			ret[0] = '+';
+		}
+		else
+		{
+			ret = '-';
+		}
+		return BigData(ret.c_str());
+	}
+	//5.左右相等
+	if (strcmp(_strData.c_str() + 1, bigdata._strData.c_str() + 1) == 0)
+	{
+		string ret = _strData;
+		if (_strData[0] != bigdata._strData[0])
+		{
+			ret[0] = '-';
+		}
+
+		return BigData(ret.c_str());
+	}
+	//6.自己写
+	return BigData(Div(_strData, bigdata._strData).c_str());
+}
+
+
+
+string BigData::Add(string left, string right)
+{
+	int iLSize = left.size();//1111111111111111111111111111111111111111111111111
+	int iRSize = right.size();//-99
+	
+	if (iLSize < iRSize)
+	{
+		if (left[0] == '-' && iLSize < iRSize)
+		{
+			 swap(left[0],right[0]);
+			 swap(left, right);
+			 swap(iLSize, iRSize);
+		}
+		else
+		{
+			swap(left, right);
+			swap(iLSize, iRSize);
+		}
+		
+	}
+	//22222
+	//   33
+	string sRet;
+	sRet.resize(iLSize + 1);
+	sRet[0] = left[0];
+	char Step = 0;
+
+	for (int i = 1; i < iLSize; i++)
+	{
+		char cRet = left[iLSize - i] - '0' + Step;
+		if (i < iRSize)
+		cRet += right[iRSize- i]  - '0';
+
+		sRet[iLSize - i + 1] = cRet % 10 + '0';
+		Step = cRet / 10;
+	}
+	sRet[1] = Step + '0';
+
+	return sRet;
+}
+
+string BigData::Sub(string left, string right)
+{
+	int iLSize = left.size();// 99999999999999999999999999999999999999999999999999
+	int iRSize = right.size();//9999999999999999999999999999999999999999999999999999
+	char cSymbol = left[0];
+	if (iLSize < iRSize ||
+		iLSize == iRSize && left < right)
+	{
+		swap(left, right);
+		swap(iLSize, iRSize);
+		if (cSymbol == '+')
+		{
+			cSymbol = '-';
+		}
+		else
+		{
+			cSymbol = '+';
+		}
+	}
+
+	string sRet;
+	sRet.resize(iLSize);
+	sRet[0] = cSymbol;
+	for (int i = 1; i < iLSize; i++)
+	{
+		char ret = left[iLSize - i] - '0';
+		if (i < iRSize)
+		ret -= right[iRSize - i] - '0';
+
+		if (ret < 0)
+		{
+			ret += 10;
+			left[iLSize - i - 1] -= 1;
+		}
+
+		sRet[iLSize - i] = ret + '0';
+	}
+
+	return sRet;
+}
+
+string BigData::Mul(string left, string right)
+{
+	int iLSize = left.size();
+	int iRSize = right.size();
+	char cSymbol = '+';
+	if (left[0] != right[0])
+	{
+		cSymbol = '-';
+	}
+
+	if (iLSize > iRSize)
+	{
+		swap(left, right);
+		swap(iLSize, iRSize);
+	}
+	
+	string sRet;
+	sRet.assign(iLSize + iRSize - 1,'0');
+	sRet[0] = cSymbol;
+	int iDataLen = sRet.size();
+	int ioffset = 0;
+
+	for (int i = 1; i < iLSize; i++)
+	{
+		char cStep = 0;
+		char cLeft = left[iLSize - i] - '0';//990000099  99
+		if (cLeft == '0')
+		{
+			ioffset++;
+			continue;
+		}
+
+		for (int iRIdx = 1; iRIdx < iRSize; ++iRIdx)
+		{
+			char cRet = cLeft*(right[iRSize - iRIdx] - '0') + cStep;
+			cRet += sRet[iDataLen - iRIdx - ioffset] - '0';
+			sRet[iDataLen - iRIdx - ioffset] = cRet % 10 +'0';
+			cStep = cRet / 10;
+		}
+		sRet[iDataLen - iRSize - ioffset] += cStep;
+		ioffset++;
+	}
+	return sRet;
+
+}
+
+string BigData::Div(string left, string right)
+{
+	//99999999999999999999999999999 222222222222222222222222  //99000000000000000099 99 //99000000000000990000000099 99
+	
+	string sRet;
+	sRet.append(1, '+');
+	if (left[0] != right[0])
+	{
+		sRet[0] = '-';
+	}
+
+	char* pLeft = (char*)(left.c_str() + 1);
+	char* pRight = (char*)(right.c_str() + 1);
+	int LSize = left.size() - 1;
+	int DataLen = right.size() - 1;
+
+	for (int i = 0; i < left.size();)
+	{
+		if (!IsLeftStrBig(pLeft, DataLen, pRight, right.size() - 1))
+		{
+			sRet.append(1, '0');
+			DataLen++;
+			if (DataLen + i > LSize)
+			{
+				break;
+			}
+		}
+		else
+		{
+			sRet.append(1, Subloop(pLeft, DataLen, pRight, right.size() - 1));
+			while (*pLeft == '0' && DataLen >0)//9900099 99 00000099
+			{
+				pLeft++;
+				i++;
+				DataLen--;
+			}
+			DataLen++;
+			if (DataLen + i > LSize)
+			{
+				break;
+			}
+		}
+	}
+
+	return sRet;
+}
+
+bool BigData::IsLeftStrBig(const char* pLeft, int LSize, const char* pRight, int RSize)
+{
+	if (LSize > RSize ||
+		LSize == RSize && strcmp(pLeft, pRight) >= 0)
+	{
+		return true;
+	}
+
+	return false;
+}
+
+char BigData::Subloop(char* pLeft, int LSize, const char* pRight, int RSize)
+{
+	assert(pLeft&& pRight);
+	char cRet = '0';
+
+	while (1)
+	{
+		if (!IsLeftStrBig(pLeft, LSize, pRight, RSize))
+		{
+			break;
+		}
+
+		int LDataLen = LSize - 1;
+		int RDataLen = RSize - 1;
+
+		while (LDataLen >= 0 && RDataLen >= 0)
+		{
+			char ret = pLeft[LDataLen] - '0';
+			ret -= pRight[RDataLen] - '0';
+			if (ret < 0)
+			{
+				pLeft[LDataLen - 1] -= 1;
+				ret += 10;
+			}
+			pLeft[LDataLen] = ret + '0';
+			LDataLen--;
+			RDataLen--;
+		}
+
+		while (*pLeft == '0')
+		{
+			pLeft++;
+			LSize--;
+		}
+		cRet++;
+	}
+	return cRet;
+}
+
+void BigData::INT64ToString()
+{
+	char cSymbol = '+';
+	INT64 tmp = _value;
+	if (tmp < 0)
+	{
+		cSymbol = '-';
+		tmp = 0 - tmp;
+	}
+
+	_strData.append(1,cSymbol);
+	while (tmp)
+	{
+		char c = tmp % 10;
+		_strData.append(1, c + '0');
+		tmp /= 10;
+	}
+
+	char* pLeft = (char*)_strData.c_str() + 1;
+	char* pRight = (char*)(pLeft + _strData.size() - 2);
+
+	while (pLeft < pRight)
+	{
+		char cTmp = *pLeft;
+		*pLeft++ = *pRight;
+		*pRight-- = cTmp;
+	}
+}
+
+
+bool BigData::IsINT64OverFlow()const
+{
+	//+9223372036854775807
+	//-9223372036854775808
+	string tmp("9223372036854775807");
+	if ('-' == _strData[0])
+	{
+		tmp = "-9223372036854775808";
+	}
+
+	if (_strData.size() < tmp.size())
+	{
+		return true;
+	}
+	else if (_strData.size() == tmp.size() && _strData <= tmp)
+	{
+		return true;
+	}
+	return false;
+}
+
+ostream& operator<<(ostream& _cout, const BigData& bigdata)
+{
+	if (bigdata.IsINT64OverFlow())
+	{
+		_cout << bigdata._value << endl;
+	}
+	else
+	{
+		char* pData = (char*)bigdata._strData.c_str();
+		if ('+' == pData[0])
+		{
+			pData++;
+		}
+		_cout << pData << endl;
+	}
+	return _cout;
+}
+
